@@ -7,7 +7,7 @@ from minorminer.layout.placement import binning, closest, injective
 
 
 def find_embedding(
-    S, T, layout=None, placement=closest, construction=pass_along, hinting=initial, **kwargs
+    S, T, layout=kamada_kawai, placement=closest, construction=pass_along, hinting=initial, **kwargs
 ):
     """
     Tries to embed S in T by computing layout-aware chains and passing them to minorminer.find_embedding(). Chains are 
