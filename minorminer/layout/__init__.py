@@ -70,14 +70,14 @@ def find_embedding(
     start = time.process_time()
 
     # Parse kwargs
-    layout_kwargs, placement_kwargs, connection_kwargs, expansion_kwargs, contraction_kwargs = parse_kwargs(
+    layout_kwargs, placement_kwargs, connection_kwargs, expansion_kwargs, contraction_kwargs = _parse_kwargs(
         kwargs)
 
     # Compute the layouts
-    S_layout, T_layout = parse_layout_parameter(S, T, layout, layout_kwargs)
+    S_layout, T_layout = _parse_layout_parameter(S, T, layout, layout_kwargs)
 
     # Compute the placement (i.e. chains)
-    chains = parse_placement_parameter(
+    chains = _parse_placement_parameter(
         S_layout, T_layout, placement, placement_kwargs)
 
     # Connect the chains
@@ -113,9 +113,10 @@ def find_embedding(
     return output
 
 
-def parse_kwargs(kwargs):
+def _parse_kwargs(kwargs):
     """
-    Extract kwargs for layout and construction functions. Leave the remaining ones for minorminer.find_embedding().
+    Extract kwargs for layout, placement, connection, expansion, and contraction functions. Leave the remaining ones 
+    for minorminer.find_embedding().
     """
     layout_kwargs = {}
     if "d" in kwargs:
@@ -156,7 +157,7 @@ def parse_kwargs(kwargs):
     return layout_kwargs, placement_kwargs, connection_kwargs, expansion_kwargs, contraction_kwargs
 
 
-def parse_layout_parameter(S, T, layout, layout_kwargs):
+def _parse_layout_parameter(S, T, layout, layout_kwargs):
     """
     Determine what combination of tuple, dict, and function the layout parameter is.
     """
@@ -193,7 +194,7 @@ def parse_layout_parameter(S, T, layout, layout_kwargs):
     return S_layout, T_layout
 
 
-def parse_placement_parameter(S_layout, T_layout, placement, placement_kwargs):
+def _parse_placement_parameter(S_layout, T_layout, placement, placement_kwargs):
     """
     Determine if placement is a function or a dict.
     """

@@ -11,7 +11,7 @@ from .utils import (dnx_utils, graph_utils, layout_utils,
 from scipy.spatial import KDTree, distance
 
 
-def closest(S_layout, T, max_subset_size=(1, 1), num_neighbors=1, **kwargs):
+def closest(S_layout, T, subset_size=(1, 1), num_neighbors=1, fill_T=False, **kwargs):
     """
     Maps vertices of S to the closest vertices of T as given by S_layout and T_layout. i.e. For each vertex u in
     S_layout and each vertex v in T_layout, map u to the v with minimum Euclidean distance (||u - v||_2).
@@ -20,63 +20,85 @@ def closest(S_layout, T, max_subset_size=(1, 1), num_neighbors=1, **kwargs):
     ----------
     S_layout : dict or layout.Layout
         A layout for S; i.e. a map from S to R^d.
-    T : dict or layout.Layout or dwave-networkx.Graph
-        A layout for T; i.e. a map from T to R^d. Or a D-Wave networkx graph to make a layout from.
-    max_subset_size : tuple (default (1, 1))
+    T : dict or layout.Layout or networkx.Graph
+        A layout for T; i.e. a map from T to R^d. Or a networkx graph to make a layout from.
+    subset_size : tuple (default (1, 1))
         A lower bound and an upper bound on the size of subets of T that will be considered when mapping vertices of S.
         If different from default, then T_layout must be a Layout object.
-    num_neighbors: int (default 1)
+    num_neighbors : int (default 1)
         The number of closest neighbors to query from the KDTree--the neighbor with minimium overlap is chosen.
+    fill_T : bool (default False)
+        If True, S_layout is scaled so that it fills the layout of T. If False, the scale of S_layout is used.
 
     Returns
     -------
     placement : dict
         A mapping from vertices of S (keys) to subsets of vertices of T (values).
     """
-    # FIXME: This is real messy
+    # Standardize input
     T_layout = placement_utils.parse_T(T)  # Turns graph into layout
-    if isinstance(T_layout, layout.Layout):
-        T_layout_dict = dict(T_layout.layout)  # Make a copy
-    elif isinstance(T_layout, dict):
-        T_layout_dict = dict(T_layout)
 
-    T_vertices = list(T_layout_dict.keys())
+    # FIXME: I'm not sure if this is best, but it supports passing in a dict.
+    if isinstance(T_layout, dict):
+        T_array = np.array([p for p in T_layout.values()])
+        T_center = np.mean(T_array, axis=0)
+        T_scale = np.max(
+            np.linalg.norm(
+                T_array - T_center, float("inf"), axis=0
+            )
+        )
+    else:
+        T_array = T_layout.layout_array
+        T_scale = T_layout.scale
+        T_center = T_layout.center
+
+    # Check if the S_layout is too large for T.
+    # If it is, scale it so that it fills T.
+    fill_T = fill_T or np.any(
+        np.abs(S_layout.layout_array) > T_scale)
+
+    # Scale S to fill T at the grid level
+    if fill_T:
+        modified_layout = layout.scale_layout(
+            S_layout.layout_array, T_layout.scale, S_layout.scale, S_layout.center)
+
+        # Turn it into a dictionary
+        modified_layout = {v: pos for v, pos in zip(
+            S_layout.G, modified_layout)}
+    else:
+        modified_layout = S_layout
+
+    # A new layout for subsets of T.
+    T_subgraph_layout = {}
 
     # Get connected subgraphs to consider mapping to
-    if max_subset_size != (1, 1):
+    if subset_size != (1, 1):
         assert isinstance(
             T_layout, layout.Layout), "Pass in a Layout object so we can access the graph."
 
-        # Copy the dictionary layout for T so we can modify it.
-        T_layout_dict = dict(T_layout.layout)
-
         T_subgraphs = graph_utils.get_connected_subgraphs(
-            T_layout.G, max_subset_size[0], max_subset_size[1])
+            T_layout.G, subset_size[0], subset_size[1])
 
         # Calculate the barycenter (centroid) of each subset with size > 1
-        for k in range(max(2, max_subset_size[0]), max_subset_size[1]+1):
+        for k in range(max(2, subset_size[0]), subset_size[1]+1):
             for subgraph in T_subgraphs[k]:
-                T_layout_dict[subgraph] = np.mean(
-                    tuple(T_layout_dict[v] for v in subgraph), axis=0)
+                T_subgraph_layout[subgraph] = np.mean(
+                    tuple(T_layout[v] for v in subgraph), axis=0)
 
     # Determine if you need to add or delete subsets of size 1
-    if max_subset_size[0] == 1:
-        for v in T_vertices:
-            T_layout_dict[frozenset((v,))] = T_layout_dict[v]
-            del T_layout_dict[v]
-    else:
-        for v in T_vertices:
-            del T_layout_dict[v]
+    if subset_size[0] == 1:
+        for v, p in T_layout.items():
+            T_subgraph_layout[frozenset((v,))] = p
 
     # Use scipy's KDTree to solve the nearest neighbor problem.
     # This requires a few lookup tables
-    T_vertex_lookup = {tuple(p): v for v, p in T_layout_dict.items()}
-    layout_points = [tuple(p) for p in T_layout_dict.values()]
+    T_vertex_lookup = {tuple(p): V for V, p in T_subgraph_layout.items()}
+    layout_points = [tuple(p) for p in T_subgraph_layout.values()]
     overlap_counter = Counter()
     tree = KDTree(layout_points)
 
     placement = {}
-    for u, u_pos in S_layout.items():
+    for u, u_pos in modified_layout.items():
         distances, v_indices = tree.query(u_pos, num_neighbors)
         placement[u] = placement_utils.minimize_overlap(
             distances, v_indices, T_vertex_lookup, layout_points, overlap_counter)

@@ -103,7 +103,7 @@ class Layout(abc.MutableMapping):
                 self.layout = layout
                 self.layout_array = np.array([layout[v] for v in self.G])
             elif isinstance(layout, (np.ndarray, list)):
-                self.layout = {v: p for v, p in zip(G, layout)}
+                self.layout = {v: p for v, p in zip(self.G, layout)}
                 self.layout_array = layout
 
             # Set the layout's center, scale, and dim from calculating them based on the layout passed in by the user
@@ -178,6 +178,8 @@ class Layout(abc.MutableMapping):
             a matrix representing the same data. If None, it is computed.
         p : int (default 2)
             The order of the p-norm to use as a metric.
+        kwargs : dict
+            These keyword arguments are passed to scipy.optimize.minimize.
 
         Returns
         -------
