@@ -7,36 +7,30 @@ import networkx as nx
 from .utils import dnx_utils, layout_utils, placement_utils
 
 
-def neighborhood(S_layout, T, chains, second=False, **kwargs):
+def neighborhood(placement, second=False, **kwargs):
     """
-    Given a placement (a map, phi, from vertices of S to vertices of T), form the chain N_T(phi(u)) (closed neighborhood 
-    of v in T) for each u in S.
+    Given a placement (a map, phi, from vertices of S to the subsets of vertices of T), form the chain N_T(phi(u)) 
+    (closed neighborhood of v in T) for each u in S.
 
     Parameters
     ----------
-    placement : dict
-        A mapping from vertices of S (keys) to vertices of T (values).
-    S_layout : layout.Layout
-        A layout for S; i.e. a map from S to R^d.
-    T : layout.Layout or networkx.Graph
-        A layout for T; i.e. a map from T to R^d. Or a networkx graph to make a layout from.
+    placement : placement.Placement
+        A mapping from vertices of S (keys) to subsets of vertices of T (values).
     second : bool (default False)
         If True, gets the closed 2nd neighborhood of each vertex. If False, get the closed 1st neighborhood of each
         vertex.
 
     Returns
     -------
-    chains: dict
-        A mapping from vertices of S (keys) to chains of T (values).
+    placement : placement.Placement
+        A mapping from vertices of S (keys) to subsets of vertices of T (values).
     """
-    # Standardize input
-    T_layout = placement_utils.parse_T(T, disallow="dict")
-
-    return {u: _closed_neighbors(T_layout.G, v, second=second)
-            for u, v in chains.items()}
+    placement.chains = {u: _closed_neighbors(placement.T, V, second=second)
+                        for u, V in placement.items()}
+    return placement
 
 
-def _closed_neighbors(G, u, second):
+def _closed_neighbors(G, U, second):
     """
     Returns the closed neighborhood of u in G.
 
@@ -44,8 +38,8 @@ def _closed_neighbors(G, u, second):
     ----------
     G : NetworkX graph
         The graph you are considering.
-    u : NetworkX node
-        The node you are computing the closed neighborhood of.
+    U : list or frozenset or set
+        A collection of nodes you are computing the closed neighborhood of.
     second : bool
         If True, compute the closed 2nd neighborhood.
 
@@ -54,12 +48,8 @@ def _closed_neighbors(G, u, second):
     neighbors: set
         A set of vertices of G.
     """
-    if isinstance(u, (list, frozenset, set)):
-        closed_neighbors = nx.node_boundary(G, u) | set(u)
-    else:
-        closed_neighbors = set(G.neighbors(u)) | set((u, ))
+    closed_neighbors = nx.node_boundary(G, U) | set(U)
 
     if second:
         return nx.node_boundary(G, closed_neighbors) | closed_neighbors
     return closed_neighbors
-

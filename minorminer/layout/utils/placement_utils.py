@@ -4,50 +4,22 @@ import numpy as np
 from ..layout import Layout, dnx_layout, p_norm
 
 
-def parse_T(T, disallow=None):
-    if isinstance(T, nx.Graph) and disallow != "graph":
-        if T.graph.get("family") in ("chimera", "pegasus"):
-            return dnx_layout(T)
+def parse_layout(G):
+    """
+    Takes in a layout.Layout, a networkx.Graph, or a dict and returns a layout.Layout object.
+    """
+    if isinstance(G, Layout):
+        return Layout(G.G, G.layout)
+
+    if isinstance(G, nx.Graph):
+        if G.graph.get("family") in ("chimera", "pegasus"):
+            return dnx_layout(G)
         else:
-            return p_norm(T)
-    elif isinstance(T, Layout) and disallow != "layout":
-        return T
-    elif isinstance(T, dict) and disallow != "dict":
-        return T
-    else:
-        raise TypeError("Why did you give me that?")
+            return p_norm(G)
 
-
-def check_requirements(S_layout, T_layout, allowed_dnx_graphs=None, allowed_dims=None):
-    """
-    Checks input for various placement algorithms.
-    """
-    if len(S_layout) > len(T_layout):
-        raise RuntimeError("S is larger than T. You cannot embed S in T.")
-
-    # Datatype parsing
-    if isinstance(allowed_dnx_graphs, str):
-        allowed_dnx_graphs = [allowed_dnx_graphs]
-    elif isinstance(allowed_dnx_graphs, (frozenset, list, set, tuple)):
-        pass
-
-    # Datatype parsing
-    if isinstance(allowed_dims, int):
-        allowed_dims = [allowed_dims]
-    elif isinstance(allowed_dims, (frozenset, list, set, tuple)):
-        pass
-
-    if allowed_dnx_graphs is None:
-        pass
-    elif T_layout.G.graph.get("family") not in allowed_dnx_graphs:
-        raise NotImplementedError(
-            "This strategy is currently only implemented for graphs of type {}.".format(allowed_dnx_graphs))
-
-    if allowed_dims is None:
-        pass
-    elif S_layout.d not in allowed_dims or T_layout.d not in allowed_dims:
-        raise NotImplementedError(
-            "This strategy is only implemented for {}-dimensional layouts.".format(allowed_dims))
+    if isinstance(G, dict):
+        raise TypeError(
+            "If you want to pass in a precomputed layout dictionary, please create a layout object; Layout(G, layout).")
 
 
 def minimize_overlap(distances, v_indices, T_vertex_lookup, layout_points, overlap_counter):
@@ -73,6 +45,8 @@ def convert_to_chains(placement):
     """
     Helper function to convert a placement to a chain-ready data structure.
     """
+    if placement is None:
+        return {}
     for v in placement.values():
         if isinstance(v, (list, frozenset, set)):
             return dict(placement)

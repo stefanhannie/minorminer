@@ -25,12 +25,17 @@ class TestFull(unittest.TestCase):
         self.center = (0, 0, 0)
         self.scale = 2
         self.rescale = False
+        self.p = 2
+        self.starting_layout = nx.spectral_layout(self.S, dim=3)
+        self.G_distances = mml.utils.layout_utils.graph_distances(self.S)
+        self.m = 20
+        self.pca = True
 
         # Placement kwargs
-        self.max_subset_size = (2, 2)
+        self.subset_size = (2, 2)
         self.strategy = "all"
         self.num_neighbors = 3
-        self.fill_processor = False
+        self.fill_T = False
         self.unit_tile_capacity = 3
 
         # Expansion kwargs
@@ -71,7 +76,7 @@ class TestFull(unittest.TestCase):
             self.C,
             layout=mml.p_norm,
             placement=mml.closest,
-            connection=mml.shortest_paths,
+            connection=None,
             expansion=mml.neighborhood,
             contraction=mml.random_remove,
             mm_hint_type="suspend_chains",
@@ -80,10 +85,15 @@ class TestFull(unittest.TestCase):
             center=self.center,
             scale=self.scale,
             rescale=self.rescale,
-            max_subset_size=self.max_subset_size,
+            p=self.p,
+            starting_layout=self.starting_layout,
+            G_distances=self.G_distances,
+            m=self.m,
+            pca=self.pca,
+            subset_size=self.subset_size,
             strategy=self.strategy,
             num_neighbors=self.num_neighbors,
-            fill_processor=self.fill_processor,
+            fill_T=self.fill_T,
             unit_tile_capacity=self.unit_tile_capacity,
             second=self.second,
             percent=self.percent,

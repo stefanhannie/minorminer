@@ -22,34 +22,28 @@ class TestContraction(unittest.TestCase):
         self.closest = mml.closest(self.S_layout, self.C_layout)
 
         # Connections for testing
-        self.crosses = mml.crosses(
-            self.S_layout, self.C_layout, self.closest)
+        self.crosses = mml.crosses(self.closest)
 
         # Expansions for testing
-        self.closest_neighborhood = mml.neighborhood(
-            self.S_layout, self.C_layout, self.closest)
-        self.crosses_neighborhood = mml.neighborhood(
-            self.S_layout, self.C_layout, self.crosses)
+        self.closest_neighborhood = mml.neighborhood(self.closest)
+        self.crosses_neighborhood = mml.neighborhood(self.crosses)
 
     def test_random_remove(self):
         """
         Tests that crosses construction is working correctly.
         """
         # Test different placements
-        mml.random_remove(self.S_layout, self.C_layout, self.closest)
+        mml.random_remove(self.closest)
 
         # Test different connections
-        mml.random_remove(self.S_layout, self.C_layout, self.crosses)
+        mml.random_remove(self.crosses)
 
         # Test different expansions
-        mml.random_remove(self.S_layout, self.C_layout,
-                          self.closest_neighborhood)
-        mml.random_remove(self.S_layout, self.C_layout,
-                          self.crosses_neighborhood)
+        mml.random_remove(self.closest_neighborhood)
+        mml.random_remove(self.crosses_neighborhood)
 
         # Test the parameters
-        mml.neighborhood(self.S_layout, self.C_layout,
-                         self.closest, percent=3/4)
+        mml.neighborhood(self.closest, percent=3/4)
 
 
 if __name__ == '__main__':

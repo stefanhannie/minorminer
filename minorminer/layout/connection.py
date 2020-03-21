@@ -8,7 +8,7 @@ import networkx as nx
 from .utils import dnx_utils, layout_utils, placement_utils
 
 
-def crosses(S_layout, T, placement):
+def crosses(placement):
     """
     Extend chains for vertices of S along rows and columns of qubits of T (T must be a D-Wave hardware graph). 
 
@@ -19,46 +19,37 @@ def crosses(S_layout, T, placement):
 
     Parameters
     ----------
-    S_layout : layout.Layout
-        A layout for S; i.e. a map from S to R^d.
-    T : layout.Layout or dwave-networkx.Graph
-        A layout for T; i.e. a map from T to R^d. Or a D-Wave networkx graph to make a layout from.
-    placement : dict
-        A mapping from vertices of S (keys) to vertices of T (values).
+    placement : placement.Placement
+        A mapping from vertices of S (keys) to subsets of vertices of T (values).
 
     Returns
     -------
-    chains: dict
-        A mapping from vertices of S (keys) to chains of T (values).
+    placement : placement.Placement
+        A mapping from vertices of S (keys) to subsets of vertices of T (values).
     """
-    # Standardize input
-    T_layout = placement_utils.parse_T(T, disallow="dict")
-
-    # Raise exceptions if you need to
-    placement_utils.check_requirements(
-        S_layout, T_layout, allowed_dnx_graphs="chimera", allowed_dims=2)
-
-    # If needed turn singletons into lists
-    chains = placement_utils.convert_to_chains(placement)
+    # Currently only implemented for 2d chimera
+    if placement.T.graph.get("family") != "chimera" or placement.T_layout.d != 2:
+        raise NotImplementedError(
+            "This strategy is currently only implemented for Chimera in 2d.")
 
     # Grab the coordinate version of the labels
-    if T_layout.G.graph["labels"] == "coordinate":
-        pass
+    if placement.T.graph["labels"] == "coordinate":
+        chains = placement.chains
     else:
-        n, m, t = dnx_utils.lookup_dnx_dims(T_layout.G)
+        n, m, t = dnx_utils.lookup_dnx_dims(placement.T)
         C = dnx.chimera_coordinates(m, n, t)
         chains = {
-            v: {C.linear_to_chimera(q) for q in Q} for v, Q in chains.items()
+            v: {C.linear_to_chimera(q) for q in Q} for v, Q in placement.items()
         }
 
-    for v in S_layout.G:
+    for v in placement.S:
         hor_v, ver_v = _horizontal_and_vertical_qubits(chains[v])
 
         min_x = min(hor_v[1], ver_v[1])
         max_x = max(hor_v[1], ver_v[1])
         min_y = min(hor_v[0], ver_v[0])
         max_y = max(hor_v[0], ver_v[0])
-        for u in S_layout.G[v]:
+        for u in placement.S[v]:
             hor_u, ver_u = _horizontal_and_vertical_qubits(chains[u])
 
             min_x = min(min_x, min(hor_u[1], ver_u[1]))
@@ -77,7 +68,8 @@ def crosses(S_layout, T, placement):
         chains[v] = row_qubits | column_qubits
 
     # Return the right type of vertices
-    return dnx_utils.relabel_chains(T_layout.G, chains)
+    placement.chains = dnx_utils.relabel_chains(placement.T, chains)
+    return placement
 
 
 def _horizontal_and_vertical_qubits(chain):
@@ -102,51 +94,3 @@ def _horizontal_and_vertical_qubits(chain):
         ver_v = (hor_v[0], hor_v[1], 0, random.randint(0, 3))
 
     return hor_v, ver_v
-
-
-def shortest_paths(S_layout, T, placement):
-    """
-    Extend chains in T so that their structure matches that of S. That is, form an overlap embedding of S in T
-    where the initial_chains are subsets of the overlap embedding chains. This is done via minorminer.
-
-    Parameters
-    ----------
-    S_layout : layout.Layout
-        A layout for S; i.e. a map from S to R^d.
-    T : layout.Layout or networkx.Graph
-        A layout for T; i.e. a map from T to R^d. Or a networkx graph to make a layout from.
-    placement : dict
-        A mapping from vertices of S (keys) to vertices of T (values).
-
-    Returns
-    -------
-    extended_chains: dict
-        A mapping from vertices of S (keys) to chains of T (values).
-    """
-    # Standardize input
-    T_layout = placement_utils.parse_T(T, disallow="dict")
-
-    # Grab the graphs of each object
-    S, T = S_layout.G, T_layout.G
-
-    # If needed turn singletons into lists
-    chains = placement_utils.convert_to_chains(placement)
-
-    # Extend the chains to minimal overlapped embedding
-    miner = mm.miner(S, T, initial_chains=chains)
-    extended_chains = defaultdict(set)
-    for u in S:
-        # Revert to the initial_chains and compute the embedding where you tear-up u.
-        emb = miner.quickpass(
-            [u], clear_first=True, overlap_bound=S.number_of_nodes()
-        )
-
-        # Add the new chain for u and the singleton one too (in case it got moved in emb)
-        extended_chains[u].update(set(emb[u]).union(chains[u]))
-
-        # For each neighbor v of u, grow u to reach v
-        for v in S[u]:
-            extended_chains[u].update(
-                set(emb[v]).difference(chains[v]))
-
-    return extended_chains

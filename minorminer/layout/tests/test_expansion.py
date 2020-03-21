@@ -23,28 +23,22 @@ class TestExpansion(unittest.TestCase):
         self.intersection = mml.intersection(self.S_layout, self.C_layout)
 
         # Connections for testing
-        self.crosses = mml.crosses(
-            self.S_layout, self.C_layout, self.intersection)
-        self.shortest_paths = mml.shortest_paths(
-            self.S_layout, self.C_layout, self.intersection)
+        self.crosses = mml.crosses(self.intersection)
 
     def test_neighborhood(self):
         """
         Tests that crosses construction is working correctly.
         """
         # Test different placements
-        mml.neighborhood(self.S_layout, self.C_layout, self.closest)
-        mml.neighborhood(self.S_layout, self.C_layout, self.intersection)
+        mml.neighborhood(self.closest)
+        mml.neighborhood(self.intersection)
 
         # Test different connections
-        mml.neighborhood(self.S_layout, self.C_layout, self.crosses)
-        mml.neighborhood(self.S_layout, self.C_layout, self.shortest_paths)
+        mml.neighborhood(self.crosses)
 
         # Test the parameters
-        mml.neighborhood(self.S_layout, self.C_layout,
-                         self.closest, second=True)
-        mml.neighborhood(self.S_layout, self.C_layout,
-                         self.crosses, second=True)
+        mml.neighborhood(self.closest, second=True)
+        mml.neighborhood(self.crosses, second=True)
 
 
 if __name__ == '__main__':

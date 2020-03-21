@@ -135,8 +135,8 @@ class TestLayout(unittest.TestCase):
         self.assertInBounds(layout.layout_array, non_pca_center, scale)
 
         # Testing failure conditions
-        self.assertRaises(AssertionError, mml.pca, self.S, dim_fail)
-        self.assertRaises(AssertionError, mml.pca, self.S, dim, m_fail)
+        self.assertRaises(AssertionError, mml.pca, self.S, m=dim_fail)
+        self.assertRaises(AssertionError, mml.pca, self.S, d=dim, m=m_fail)
 
     def test_precomputed_layout(self):
         """
@@ -193,7 +193,7 @@ class TestLayout(unittest.TestCase):
         self.assertRaises(AssertionError, mml.pca, G)
         self.assertRaises(AssertionError, mml.pca, H)
 
-    def test_layout_as_dictionary(self):
+    def test_layout_class(self):
         """
         Test the layout dictionary behavior.
         """
@@ -201,6 +201,9 @@ class TestLayout(unittest.TestCase):
         L['a'] = 1
         del L['a']
         self.assertEqual(repr(L), "{}")
+
+        # Empty layout array
+        mml.Layout(self.S, np.array([]))
 
 
 if __name__ == '__main__':

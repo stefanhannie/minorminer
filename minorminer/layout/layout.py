@@ -11,46 +11,41 @@ from scipy.spatial.distance import euclidean
 from .utils import dnx_utils, graph_utils, layout_utils
 
 
-def p_norm(
-    G,
-    p=2,
-    starting_layout=None,
-    G_distances=None,
-    d=2,
-    center=None,
-    scale=None,
-    recenter=True,
-    rescale=False,
-    seed=None,
-    **kwargs
-):
+_p_norm_kwargs = set(("p", "starting_layout", "G_distances"))
+_dnx_kwargs = set()
+_pca_kwargs = set(("m", "pca"))
+
+
+def p_norm(G, d=2, center=None, scale=None, recenter=True, rescale=False, seed=None, **kwargs):
     """
     Top level function for minorminer.layout.__init__() use as a parameter.
     # FIXME: There's surely a better way of doing this.
     """
     L = Layout(G, d=d, center=center, scale=scale,
                recenter=recenter, rescale=rescale, seed=seed)
-    _ = L.p_norm(p, starting_layout, G_distances, **kwargs)
+    _ = L.p_norm(**kwargs)
     return L
 
 
-def dnx_layout(G, d=2, center=None, scale=None, rescale=True, seed=None, **kwargs):
+def dnx_layout(G, d=2, center=None, scale=None, recenter=True, rescale=True, seed=None, **kwargs):
     """
     Top level function for minorminer.layout.__init__() use as a parameter.
     # FIXME: There's surely a better way of doing this.
     """
-    L = Layout(G, d=d, center=center, scale=scale, rescale=rescale, seed=seed)
+    L = Layout(G, d=d, center=center, scale=scale,
+               recenter=recenter, rescale=rescale, seed=seed)
     _ = L.dnx_layout(**kwargs)
     return L
 
 
-def pca(G, d=2, m=None, pca=True, center=None, scale=None, seed=None, rescale=False, **kwargs):
+def pca(G, d=2, center=None, scale=None, recenter=True, rescale=False, seed=None, **kwargs):
     """
     Top level function for minorminer.layout.__init__() use as a parameter.
     # FIXME: There's surely a better way of doing this.
     """
-    L = Layout(G, d=d, center=center, scale=scale, seed=seed, rescale=rescale)
-    _ = L.pca(m, pca, **kwargs)
+    L = Layout(G, d=d, center=center, scale=scale,
+               recenter=recenter, rescale=rescale, seed=seed)
+    _ = L.pca(**kwargs)
     return L
 
 
@@ -101,23 +96,34 @@ class Layout(abc.MutableMapping):
         if layout is not None:
             if isinstance(layout, (dict, defaultdict)):
                 self.layout = layout
-                self.layout_array = np.array([layout[v] for v in self.G])
-            elif isinstance(layout, (np.ndarray, list)):
-                self.layout = {v: p for v, p in zip(self.G, layout)}
+                if layout == {}:
+                    self.layout_array = np.array([])
+                else:
+                    self.layout_array = np.array([layout[v] for v in self.G])
+            elif isinstance(layout, (np.ndarray)):
                 self.layout_array = layout
+                if self.layout_array.size == 0:
+                    self.layout = {}
+                else:
+                    self.layout = {v: p for v, p in zip(self.G, layout)}
 
             # Set the layout's center, scale, and dim from calculating them based on the layout passed in by the user
-            self.d = self.layout_array.shape[1]
-            self.center = np.mean(self.layout_array, axis=0)
-            self.scale = np.max(
-                np.linalg.norm(
-                    self.layout_array - self.center, float("inf"), axis=0
+            if self.layout:
+                self.d = self.layout_array.shape[1]
+                self.center = np.mean(self.layout_array, axis=0)
+                self.scale = np.max(
+                    np.linalg.norm(
+                        self.layout_array - self.center, float("inf"), axis=0
+                    )
                 )
-            )
+            else:
+                self.d = d
+                self.center = center or self.d*(0,)
+                self.scale = scale
         else:
             self.d = d
             self.layout = {}
-            self.layout_array = []
+            self.layout_array = np.array([])
             self.center = center or self.d*(0,)
             self.scale = scale
 
@@ -226,7 +232,6 @@ class Layout(abc.MutableMapping):
             method='L-BFGS-B',
             args=(G_distances, k, p),
             jac=True,
-            **kwargs
         )
 
         # Read out the solution to the minimization problem and save layouts
@@ -273,7 +278,7 @@ class Layout(abc.MutableMapping):
             raise ValueError(
                 "Only dnx.chimera_graph() and dnx.pegasus_graph() are supported.")
 
-        # If you are rescalling (recommended) add kwargs for dwave_networkx to consume.
+        # If you are rescalling (recommended)
         if self.rescale:
             # Default scale is dependent on the longest dimension of Chimera or Pegasus.
             if self.scale is None:
@@ -290,9 +295,11 @@ class Layout(abc.MutableMapping):
             self.center = (1/2, -1/2) + (self.d-2)*(0,)
 
         if family == "chimera":
-            layout = dnx.chimera_layout(self.G, dim=self.d, **kwargs)
+            layout = dnx.chimera_layout(
+                self.G, dim=self.d, center=kwargs.get("center"), scale=kwargs.get("scale", 1))
         elif family == "pegasus":
-            layout = dnx.pegasus_layout(self.G, dim=self.d, **kwargs)
+            layout = dnx.pegasus_layout(
+                self.G, dim=self.d, center=kwargs.get("center"), scale=kwargs.get("scale", 1))
 
         self.layout = layout
         self.layout_array = np.array([layout[v] for v in self.G])
@@ -458,7 +465,7 @@ def scale_layout(layout, new_scale, old_scale=None, center=None):
         from the center.
     center : tuple or numpy array (default None)
         A point in R^d representing the center of the layout. If None, the approximate center of layout is computed by 
-        calculating the center of mass (or centroid).
+        calculating the center of mass (centroid).
 
     Returns
     -------

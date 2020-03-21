@@ -3,11 +3,11 @@ import time
 import minorminer as mm
 import networkx as nx
 
-from .connection import crosses, shortest_paths
+from .connection import crosses
 from .contraction import random_remove
 from .expansion import neighborhood
 from .layout import Layout, dnx_layout, p_norm, pca
-from .placement import binning, closest, injective, intersection
+from .placement import Placement, binning, closest, injective, intersection
 from .utils import placement_utils
 
 
@@ -77,20 +77,20 @@ def find_embedding(
     S_layout, T_layout = _parse_layout_parameter(S, T, layout, layout_kwargs)
 
     # Compute the placement (i.e. chains)
-    chains = _parse_placement_parameter(
+    S_T_placement = _parse_placement_parameter(
         S_layout, T_layout, placement, placement_kwargs)
 
     # Connect the chains
     if connection:
-        chains = connection(S_layout, T_layout, chains, **connection_kwargs)
+        _ = connection(S_T_placement, **connection_kwargs)
 
     # Expand the chains
     if expansion:
-        chains = expansion(S_layout, T_layout, chains, **expansion_kwargs)
+        _ = expansion(S_T_placement, **expansion_kwargs)
 
     # Contract the chains
     if contraction:
-        chains = contraction(S_layout, T_layout, chains, **contraction_kwargs)
+        _ = contraction(S_T_placement, **contraction_kwargs)
 
     end = time.process_time()
     timeout = kwargs.get("timeout")
@@ -99,10 +99,11 @@ def find_embedding(
 
     # Run minorminer
     if mm_hint_type == "initial_chains":
-        output = mm.find_embedding(S, T, initial_chains=chains, **kwargs)
+        output = mm.find_embedding(
+            S, T, initial_chains=S_T_placement, **kwargs)
     elif mm_hint_type == "suspend_chains":
         output = mm.find_embedding(S, T, suspend_chains={
-            v: [C] for v, C in chains.items()}, **kwargs)
+            v: [C] for v, C in S_T_placement.items()}, **kwargs)
     else:
         raise ValueError(
             "Only initial_chains and suspend_chains are supported minorminer hint types.")
@@ -119,6 +120,7 @@ def _parse_kwargs(kwargs):
     for minorminer.find_embedding().
     """
     layout_kwargs = {}
+    # For the layout object
     if "d" in kwargs:
         layout_kwargs["d"] = kwargs.pop("d")
     if "seed" in kwargs:
@@ -129,19 +131,34 @@ def _parse_kwargs(kwargs):
         layout_kwargs["scale"] = kwargs.pop("scale")
     if "rescale" in kwargs:
         layout_kwargs["rescale"] = kwargs.pop("rescale")
+    # For p_norm
+    if "p" in kwargs:
+        layout_kwargs["p"] = kwargs.pop("p")
+    if "starting_layout" in kwargs:
+        layout_kwargs["starting_layout"] = kwargs.pop("starting_layout")
+    if "G_distances" in kwargs:
+        layout_kwargs["G_distances"] = kwargs.pop("G_distances")
+    # For pca
+    if "m" in kwargs:
+        layout_kwargs["m"] = kwargs.pop("m")
+    if "pca" in kwargs:
+        layout_kwargs["pca"] = kwargs.pop("pca")
 
     placement_kwargs = {}
-    if "max_subset_size" in kwargs:
-        placement_kwargs["max_subset_size"] = kwargs.pop("max_subset_size")
-    if "strategy" in kwargs:
-        placement_kwargs["strategy"] = kwargs.pop("strategy")
+    # For the placement object
+    if "fill_T" in kwargs:
+        placement_kwargs["fill_T"] = kwargs.pop("fill_T")
+    # For closest
+    if "subset_size" in kwargs:
+        placement_kwargs["subset_size"] = kwargs.pop("subset_size")
     if "num_neighbors" in kwargs:
         placement_kwargs["num_neighbors"] = kwargs.pop("num_neighbors")
-    if "fill_processor" in kwargs:
-        placement_kwargs["fill_processor"] = kwargs.pop("fill_processor")
+    # For binning
     if "unit_tile_capacity" in kwargs:
         placement_kwargs["unit_tile_capacity"] = kwargs.pop(
             "unit_tile_capacity")
+    if "strategy" in kwargs:
+        placement_kwargs["strategy"] = kwargs.pop("strategy")
 
     connection_kwargs = {}
     # Pop connection kwargs here if you want to add some in the future
@@ -183,7 +200,7 @@ def _parse_layout_parameter(S, T, layout, layout_kwargs):
         else:
             T_layout = layout[1](T, **layout_kwargs)
 
-    # It's a function for both
+    # It's a single function
     else:
         S_layout = layout(S, **layout_kwargs)
         if T.graph.get("family") in ("chimera", "pegasus"):
@@ -200,7 +217,7 @@ def _parse_placement_parameter(S_layout, T_layout, placement, placement_kwargs):
     """
     # It's a preprocessed placement
     if isinstance(placement, dict):
-        return placement_utils.convert_to_chains(placement)
+        return Placement(S_layout, T_layout, placement, **placement_kwargs)
 
     # It's a function
     else:
