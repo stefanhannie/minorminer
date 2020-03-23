@@ -11,11 +11,6 @@ from scipy.spatial.distance import euclidean
 from .utils import dnx_utils, graph_utils, layout_utils
 
 
-_p_norm_kwargs = set(("p", "starting_layout", "G_distances"))
-_dnx_kwargs = set()
-_pca_kwargs = set(("m", "pca"))
-
-
 def p_norm(G, d=2, center=None, scale=None, recenter=True, rescale=False, seed=None, **kwargs):
     """
     Top level function for minorminer.layout.__init__() use as a parameter.
@@ -85,9 +80,7 @@ class Layout(abc.MutableMapping):
             If True, the layout is scaled to the user specified [center - scale, center + scale]^d. If False, the layout
             assumes the dimensions of the layout algorithm used.
         seed : int (default None)
-            When d > 2, kamada_kawai uses networkx.random_layout(). The seed is passed to this function.
-        kwargs : dict
-            Keyword arguments are passed to one of the layout algorithms below.
+            If an algorithm is called, i.e. nx.random_layout, this is passed as a seed.
         """
         # Ensure G is a graph object
         self.G = graph_utils.parse_graph(G)
@@ -96,16 +89,8 @@ class Layout(abc.MutableMapping):
         if layout is not None:
             if isinstance(layout, (dict, defaultdict)):
                 self.layout = layout
-                if layout == {}:
-                    self.layout_array = np.array([])
-                else:
-                    self.layout_array = np.array([layout[v] for v in self.G])
             elif isinstance(layout, (np.ndarray)):
                 self.layout_array = layout
-                if self.layout_array.size == 0:
-                    self.layout = {}
-                else:
-                    self.layout = {v: p for v, p in zip(self.G, layout)}
 
             # Set the layout's center, scale, and dim from calculating them based on the layout passed in by the user
             if self.layout:
@@ -123,7 +108,6 @@ class Layout(abc.MutableMapping):
         else:
             self.d = d
             self.layout = {}
-            self.layout_array = np.array([])
             self.center = center or self.d*(0,)
             self.scale = scale
 
@@ -131,6 +115,37 @@ class Layout(abc.MutableMapping):
         self.seed = seed
         self.recenter = recenter
         self.rescale = True if scale else rescale
+
+    # Keep layout and layout_array in lockstep with each other.
+    @property
+    def layout(self):
+        return self._layout
+
+    @property
+    def layout_array(self):
+        return self._layout_array
+
+    @layout.setter
+    def layout(self, value):
+        """
+        If layout is set, also set layout_array.
+        """
+        self._layout = value
+        if value == {}:
+            self._layout_array = np.array([])
+        else:
+            self._layout_array = np.array([value[v] for v in self.G])
+
+    @layout_array.setter
+    def layout_array(self, value):
+        """
+        If layout_array is set, also set layout.
+        """
+        self._layout_array = value
+        if value.size == 0:
+            self._layout = {}
+        else:
+            self._layout = {v: p for v, p in zip(self.G, value)}
 
     # The layout class should behave like a dictionary
     def __iter__(self):
@@ -236,7 +251,6 @@ class Layout(abc.MutableMapping):
 
         # Read out the solution to the minimization problem and save layouts
         self.layout_array = X.x.reshape(len(self.G), k)
-        self.layout = {v: pos for v, pos in zip(self.G, self.layout_array)}
 
         # Save copies of the desired center and scale.
         desired_center = self.center
@@ -295,16 +309,13 @@ class Layout(abc.MutableMapping):
             self.center = (1/2, -1/2) + (self.d-2)*(0,)
 
         if family == "chimera":
-            layout = dnx.chimera_layout(
+            self.layout = dnx.chimera_layout(
                 self.G, dim=self.d, center=kwargs.get("center"), scale=kwargs.get("scale", 1))
         elif family == "pegasus":
-            layout = dnx.pegasus_layout(
+            self.layout = dnx.pegasus_layout(
                 self.G, dim=self.d, center=kwargs.get("center"), scale=kwargs.get("scale", 1))
 
-        self.layout = layout
-        self.layout_array = np.array([layout[v] for v in self.G])
-
-        return layout
+        return self.layout
 
     def pca(self, m=None, pca=True):
         """
@@ -353,13 +364,9 @@ class Layout(abc.MutableMapping):
             # Choose the eigenvectors that correspond to the largest k eigenvalues and project in those dimensions
             self.layout_array = np.column_stack(
                 [X_T @ u for u in list(reversed(eigenvectors))[:self.d]])
-            self.layout = {
-                v: row for v, row in zip(self.G, self.layout_array)
-            }
 
         else:
             self.layout = starting_layout
-            self.layout_array = np.array([self.layout[v] for v in self.G])
 
         # Save copies of the desired center and scale.
         desired_center = self.center
@@ -390,38 +397,16 @@ class Layout(abc.MutableMapping):
         ----------
         new_center : tuple or numpy array (default None)
             A point in R^d to make the new center of the layout.
-
-        Returns
-        -------
-        layout : dict
-            A mapping from vertices of G (keys) to points in [new_center - scale, new_center + scale]^d (values).
         """
-        centered_layout = center_layout(
+        self.layout_array = center_layout(
             self.layout_array, new_center, self.center)
-
-        # Update the object
         self.center = new_center
-        self.layout_array = centered_layout
-        self.layout = {v: p for v, p in zip(self.G, self.layout_array)}
-
-        return self.layout
 
     def invert_layout(self):
         """
         This helper function transforms a (2-dimensional) layout by reflecting the layout across the x-axis.
-
-        Returns
-        -------
-        layout : dict
-            A mapping from vertices of G (keys) to points in R^d (values).
         """
-        inverted_layout = invert_layout(self.layout_array, self.center)
-
-        # Update the object
-        self.layout_array = inverted_layout
-        self.layout = {v: p for v, p in zip(self.G, self.layout_array)}
-
-        return self.layout
+        self.layout_array = invert_layout(self.layout_array, self.center)
 
     def scale_layout(self, new_scale):
         """
@@ -432,21 +417,10 @@ class Layout(abc.MutableMapping):
         ----------
         new_scale : float
             The desired scale to transform the layout to.
-
-        Returns
-        -------
-        layout : dict
-            A mapping from vertices of G (keys) to points in [center - new_scale, center + new_scale]^d (values).
         """
-        scaled_layout = scale_layout(
+        self.layout_array = scale_layout(
             self.layout_array, new_scale, self.scale, self.center)
-
-        # Update the object
         self.scale = new_scale
-        self.layout_array = scaled_layout
-        self.layout = {v: p for v, p in zip(self.G, self.layout_array)}
-
-        return self.layout
 
 
 def scale_layout(layout, new_scale, old_scale=None, center=None):
