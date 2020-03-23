@@ -73,7 +73,7 @@ class Layout(abc.MutableMapping):
             The desired center point of the layout; if None it is computed to be the origin in R^d.
         scale : float (default 1)
             The desired scale of the layout; i.e. the layout is in [center - scale, center + scale]^d space.
-        recentere : bool (default True)
+        recenter : bool (default True)
             If True, the layout is centerd to the user specified center. If False, the layout assumes the center of the 
             layout algorithm used.
         rescale : bool (default False)

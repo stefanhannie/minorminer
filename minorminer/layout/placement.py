@@ -105,10 +105,13 @@ class Placement(abc.MutableMapping):
 
     @placement.setter
     def placement(self, value):
+        """
+        If a placement is set, i.e., something from a placement algorithm, set the chains to hold this information.
+        """
         self._placement = value
         self.chains = placement_utils.convert_to_chains(value)
 
-    # The layout class should behave like a dictionary
+    # The class should behave like a dictionary
     def __iter__(self):
         """
         Iterate through the keys of the dictionary chains.
@@ -250,8 +253,8 @@ class Placement(abc.MutableMapping):
 
     def _intersection_binning(self):
         """
-        Map the vertices of S to the "intersection graph" of T. This modifies the grid graph G by assigning vertices from S 
-        and T to vertices of G.
+        Map the vertices of S to the "intersection graph" of T. This modifies the grid graph G by assigning vertices 
+        from S and T to vertices of G.
 
         Returns
         -------
@@ -259,7 +262,7 @@ class Placement(abc.MutableMapping):
             A grid graph. Each vertex of G contains data attributes "variables" and "qubits", that is, respectively 
             vertices of S and T assigned to that vertex.  
         """
-        # Scale the layout so that for each vertical and horizontal qubit that cross each other, we have an integer point.
+        # Scale the layout so that for each unit-cell edge, we have an integer point.
         m, n, t = dnx_utils.lookup_dnx_dims(self.T)
 
         # Make the "intersection graph" of the dnx_graph
@@ -284,44 +287,39 @@ class Placement(abc.MutableMapping):
 
         # --- Map the S_layout to the grid
         # D-Wave counts the y direction like matrix rows; inversion makes pictures match
-        modified_layout = layout.invert_layout(
-            self.S_layout.layout_array, self.S_layout.center)
+        self.S_layout.invert_layout()
 
         # "Zoom in" on layout_S so that the integer points are better represented
         if self.fill_T:
             zoom_scale = scale
         else:
             zoom_scale = t*self.S_layout.scale
-        modified_layout = layout.scale_layout(
-            modified_layout, zoom_scale, self.S_layout.scale, self.S_layout.center)
+        self.S_layout.scale_layout(zoom_scale)
 
         # Center to the positive orthant
-        modified_layout = layout.center_layout(
-            modified_layout, 2*(scale,), self.S_layout.center)
-
-        # Turn it into a dictionary
-        modified_layout = {v: pos for v, pos in zip(
-            self.S, modified_layout)}
+        self.S_layout.center_layout(2*(scale,))
 
         # Add "variables" (vertices from S) to grid points too
-        for v, pos in modified_layout.items():
+        for v, pos in self.S_layout.items():
             grid_point = tuple(int(x) for x in np.round(pos))
             G.nodes[grid_point]["variables"].add(v)
 
         return G
 
-    def binning(self, unit_tile_capacity=None, strategy="layout", **kwargs):
+    def binning(self, unit_tile_capacity=None, strategy="injective", **kwargs):
         """
-        Map the vertices of S to the vertices of T by first mapping both to an integer lattice (T must be a D-Wave hardware graph). 
+        Map the vertices of S to the vertices of T by first mapping both to an integer lattice (T must be a D-Wave 
+        hardware graph). 
 
         Parameters
         ----------
         unit_tile_capacity : int (default None)
-            The number of variables (vertices of S) that are allowed to map to unit tiles of T. If set, a topple based algorithm is run
-            to ensure that not too many variables are contained in the same unit tile of T.
+            The number of variables (vertices of S) that are allowed to map to unit tiles of T. If set, a topple based 
+            algorithm is run to ensure that not too many variables are contained in the same unit tile of T.
         strategy : str (default "layout")
-            layout : Use S_layout to determine the mapping from variables to qubits.
-            cycle : Cycle through the variables and qubits in a unit cell and assign variables to qubits one at a time, repeating if necessary.
+            injective : Use S_layout to determine an injective mapping from variables to qubits.
+            cycle : Cycle through the variables and qubits in a unit cell and assign variables to qubits one at a time, 
+                repeating if necessary.
             all : Map each variable to each qubit in a unit cell. Lots of overlap.
 
         Returns
@@ -345,20 +343,20 @@ class Placement(abc.MutableMapping):
         scale = (max(n, m)-1)/2
 
         # Get the grid graph and the modified layout for S
-        modified_S_layout = self._unit_cell_binning(G, scale)
+        self._unit_cell_binning(G, scale)
 
         # Do we need to topple?
-        if unit_tile_capacity or strategy == "layout":
+        if unit_tile_capacity or strategy == "injective":
             unit_tile_capacity = unit_tile_capacity or t
             n, N = len(self.S_layout), m*n*unit_tile_capacity
             if n > N:
                 raise RuntimeError(
                     "You're trying to fit {} vertices of S into {} spots of T.".format(n, N))
-            _topple(G, modified_S_layout, unit_tile_capacity)
+            _topple(G, self.S_layout, unit_tile_capacity)
 
         # Build the placement
         placement = defaultdict(set)
-        if strategy == "layout":
+        if strategy == "injective":
             for g, V in G.nodes(data="variables"):
                 V = list(V)
 
@@ -368,7 +366,7 @@ class Placement(abc.MutableMapping):
                     y_indices.remove(random.choice(y_indices))
 
                 # Run through the sorted points and assign them to qubits--find a transveral in each unit cell.
-                for k in np.argsort([modified_S_layout[v] for v in V], 0):
+                for k in np.argsort([self.S_layout[v] for v in V], 0):
                     # The x and y order in the argsort (k_* in [0,1,2,3])
                     k_x, k_y = k[0], k[1]
                     # The vertices of S at those indicies
@@ -394,8 +392,8 @@ class Placement(abc.MutableMapping):
 
     def _unit_cell_binning(self, G, scale):
         """
-        Map the vertices of S to the unit cell quotient of T. This modifies the grid graph G by assigning vertices from S 
-        and T to vertices of G.
+        Map the vertices of S to the unit cell quotient of T. This modifies the grid graph G by assigning vertices from 
+        S and T to vertices of G. Modifies self.S_layout by scaling and recentering.
 
         Parameters
         ----------
@@ -403,11 +401,6 @@ class Placement(abc.MutableMapping):
             A grid_2d_graph representing the lattice points in the positive quadrant.
         scale : float
             The scale necessary to translate (and/or resize) the layouts so that they occupy the positive quadrant.
-
-        Returns
-        -------
-        modified_layout : dict
-            The layout of S after translating and scaling to the positive quadrant. 
         """
         # Get the lattice point mapping for the dnx graph
         lattice_mapping = dnx_utils.lookup_grid_coordinates(self.T)
@@ -423,31 +416,22 @@ class Placement(abc.MutableMapping):
 
         # --- Map the S_layout to the grid
         # D-Wave counts the y direction like matrix rows; inversion makes pictures match
-        modified_layout = layout.invert_layout(
-            self.S_layout.layout_array, self.S_layout.center)
+        self.S_layout.invert_layout()
 
         # Scale S to fill T at the grid level
         if self.fill_T:
-            modified_layout = layout.scale_layout(
-                modified_layout, scale, self.S_layout.scale, self.S_layout.center)
+            self.S_layout.scale_layout(scale)
 
         # Center to the positive orthant
-        modified_layout = layout.center_layout(
-            modified_layout, 2*(scale,), self.S_layout.center)
-
-        # Turn it into a dictionary
-        modified_layout = {v: pos for v, pos in zip(
-            self.S, modified_layout)}
+        self.S_layout.center_layout(2*(scale,))
 
         # Add "variables" (vertices from S) to grid points too
-        for v, pos in modified_layout.items():
+        for v, pos in self.S_layout.items():
             grid_point = tuple(int(x) for x in np.round(pos))
             G.nodes[grid_point]["variables"].add(v)
 
-        return modified_layout
 
-
-def _topple(G, modified_layout, unit_tile_capacity):
+def _topple(G, S_layout, unit_tile_capacity):
     """
     Modifies G by toppling.
 
@@ -473,7 +457,7 @@ def _topple(G, modified_layout, unit_tile_capacity):
                     v: len(G.nodes[v]["variables"]) for v in G[g]}
 
                 # Who's closest?
-                positions = {v: modified_layout[v]
+                positions = {v: S_layout[v]
                              for v in G.nodes[g]["variables"]}
 
                 while num_vars > unit_tile_capacity:
