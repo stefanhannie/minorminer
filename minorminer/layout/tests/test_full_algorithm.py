@@ -12,8 +12,10 @@ class TestFull(unittest.TestCase):
 
         # Graphs for testing
         self.S = nx.random_regular_graph(3, 50)
+        self.C6 = nx.cycle_graph(6)
         self.G = nx.random_regular_graph(3, 150)
         self.C = dnx.chimera_graph(4)
+        self.C_rectangle = dnx.chimera_graph(2, 1)
 
         # Compute some layouts
         self.S_layout = mml.p_norm(self.S)
@@ -69,6 +71,9 @@ class TestFull(unittest.TestCase):
 
         # Test a non graph
         mml.find_embedding(self.S.edges, self.C)
+
+        # Test a non-square chimera
+        mml.find_embedding(self.C6, self.C_rectangle)
 
         # Test all the options at once
         mml.find_embedding(

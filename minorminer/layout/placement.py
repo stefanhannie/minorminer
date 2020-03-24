@@ -267,10 +267,10 @@ class Placement(abc.MutableMapping):
 
         # Make the "intersection graph" of the dnx_graph
         # Grid points correspond to intersection rows and columns of the dnx_graph
-        G = nx.grid_2d_graph(t*m, t*n)
+        G = nx.grid_2d_graph(t*n, t*m)
 
         # Determine the scale for putting things in the positive quadrant
-        scale = (t*max(n, m)-1)/2
+        scale = (t*min(n, m)-1)/2
 
         # Get the row, column mappings for the dnx graph
         lattice_mapping = dnx_utils.lookup_intersection_coordinates(
